@@ -1,0 +1,19 @@
+# __ Vault _________________________________________________________
+# Absolute path to the Obsidian vault on PC
+vault_path: "C:/Users/Nowak/Desktop/obsidian-vault"
+
+# __ reMarkable - SSH (by USB) _____________________________________
+remarkable_ip_usb: "10.11.99.1"
+
+# Path to the private SSH key (without passphrase)
+ssh_key_path: "~/.ssh/id_rsa_remarkable"
+
+# SSH connection timeout in seconds
+ssh_timeout: 5
+
+# __ reMarkable - obsidian notes ________________________________
+target_folder: "obsidian-notes"
+
+# __ Conversion ____________________________________________________
+# PDF conversion mode: "raw" (no styling) or “eink” (e-ink optimized)
+pdf_mode: "eink"

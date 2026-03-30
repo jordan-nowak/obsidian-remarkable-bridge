@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# __ Project metadata _______________________________________________
+
+[project]
+name = "obsidian-remarkable-bridge"
+version = "0.0.0"
+description = "A Python project that synchronizes Obsidian Markdown notes to a ReMarkable 2 as PDF files via SSH."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "paramiko>=3.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=24.0",
+    "ruff>=0.3",
+    "mypy>=1.8",
+    "types-paramiko",
+    "types-PyYAML",
+]
+
+# __ Package discovery ______________________________________________
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# __ pytest _________________________________________________________
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=90"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m not slow')",
+    "integration: marks tests as integration tests (deselect with '-m not integration')",
+]
+
+# __ coverage _______________________________________________________
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+]
+
+# __ black __________________________________________________________
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# __ ruff ___________________________________________________________
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["orsync"]
