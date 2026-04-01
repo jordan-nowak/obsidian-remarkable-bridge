@@ -22,7 +22,7 @@
 
 | Ref | Feature | Status |
 |-----|---------|--------|
-| [0000](./ADRs/0000_InitializeProject.md) | Initialize project structure | 🔄 |
+| [0000](./ADRs/0000_InitializeProject.md) | Initialize project structure | ✅ |
 
 ---
 
@@ -30,7 +30,7 @@
 
 | Ref | Feature | Status |
 |-----|---------|--------|
-| [0001] | Setup check - hardware and software installation | 📋 |
+| [0001](./ADRs/0001_SetupCheck.md) | Setup check - hardware and software installation | 🔄 |
 | [0002] | Vault scanner - Obsidian folder tree and wikilink resolution | 📋 |
 
 ---
