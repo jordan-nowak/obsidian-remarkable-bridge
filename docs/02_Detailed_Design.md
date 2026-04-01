@@ -22,19 +22,33 @@ See: [Software Architecture - Overview](./01_Software_Architecture.md#overview)
 
 ---
 
-## [TODO] Module: `[module_name]`
+## Modules
 
-### Responsibility
+### Responsibilities
 
 See: [Software Architecture - Module Responsibilities](./01_Software_Architecture.md#module-responsibilities)
 
-### Algorithm
+### `setup_check.py` - Algorithm
 
-```bash
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-```
+run_check(config) -> CheckReport:
+1. Detect the OS
+2. Search for pandoc in the PATH
+   - Found -> Check the pandoc version
+     - returncode == 0 -> CheckItem True, version retrieved
+     - returncode != 0 -> CheckItem False, version not retrieved
+   - Not found -> CheckItem False, do not call subprocess + provide installation guidance
+3. Attempt USB SSH connection
+   - Success -> CheckItem True
+   - Failure -> CheckItem False (no raise)
+4. If ip_wifi is not empty: attempt WiFi SSH connection
+   Otherwise: CheckItem True with detail "skipped"
+5. If USB (or WiFi) succeeded: read the tablet's version
+   - Success -> CheckItem True
+   - Failure -> CheckItem False with detail "error"
+   Otherwise: CheckItem False with detail "skipped - no SSH connection available"
+
+Fundamental rule: no check interrupts the subsequent ones.
+The caller checks report.all_ok to decide whether to abort the pipeline.
 
 ---
 

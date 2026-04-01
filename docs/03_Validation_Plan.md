@@ -48,16 +48,23 @@
 > 5. Special Cases & Tolerance
 > 6. Regression & Non-Regression
 
-#### [TODO] Module: `[module_name_1]`
+#### Module : `setup_check.py`
 
-| # | Test case - Description | Input | Expected result |
-|---|-----------|-------|-----------------|
-| UT-[MOD1]-01 | Normal case - [description] | [values] | [analytical value] |
-| UT-[MOD1]-02 | Boundary - [description] | [boundary value] | [expected] |
-| UT-[MOD1]-03 | Math property - [Ex: linearity] | [2×input] | [2×output] |
-| UT-[MOD1]-04 | Physical property - [Ex: unit consistency] | [SI inputs] | [SI output] |
-| UT-[MOD1]-05 | Input handling - scalar and array | `float`, `np.array` | same result |
-| UT-[MOD1]-06 | Error - invalid input → exception | [invalid value] | `ValueError` |
+`setup_check.py` verifies that the local environment is ready before the pipeline is launched: OS detected, Pandoc accessible, SSH connection to the tablet established, firmware version readable. Each check is independent-a failure in one does not block another.
+
+**Test Assumptions**
+- All SSH and subprocess calls are mocked - no physical device required.
+- SSH scenarios cover: USB success, WiFi success, USB failure with WiFi fallback,
+  total failure, timeout, missing key, authentication error.
+- Pandoc scenarios cover: found, missing from PATH, non-zero return code, timeout.
+
+**Success Criteria**
+- `run_check` always returns a `CheckReport` (never raises an exception).
+- `CheckReport.all_ok` is `False` as soon as a single item fails.
+- The firmware is read via USB by default, via WiFi as a fallback, marked `skipped` if
+  both fail.
+- The WiFi check is marked `skipped` (status `True`) when no WiFi IP is configured.
+- `run_check` returns exactly 5 items, with or without WiFi configured.
 
 ---
 
@@ -69,10 +76,25 @@
 > 7. Interface contract with downstream modules
 
 #### [TODO] Module: `[module_name_1]`
+<!-- Focus on the high-level goals (why, what, under what conditions) 
+     without listing the tests one by one. -->
 
-| #     | Test case - Description | Input   | Expected result |
-|-------|-------------------------|---------|-----------------|
-| IT-[MOD1]-01 | [Case] - [Description]  | [Input] | [Expected]      |
+---
+
+### Functional Tests
+
+> Tests modules with real hardware, software and configuration.
+> 
+> Run manually with `pytest tests/functional/ --functional --no-cov -s`. Never run in CI.
+
+#### Module : `setup_check.py`
+
+Covers three hardware states: tablet connected (nominal), tablet disconnected (degraded), and tablet reconnected (recovery). Each state is a separate test file.
+
+**Prerequisites:**
+- USB connection
+- SSH key deployed
+- Pandoc installed
 
 ---
 

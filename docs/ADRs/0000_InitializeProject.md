@@ -13,7 +13,7 @@ The `obsidian-remarkable-bridge` project is a personal tool developed in Python.
 **Constraints imposed from the outset**
 - Python 3.11+ stack
 - Windows compatibility is a priority (primary development environment)
-- No reMarkable cloud—everything goes through local SSH
+- No reMarkable cloud - everything goes through local SSH
 - Quality from the very first commit: linters and coverage configured
 
 ## Decision
@@ -39,7 +39,7 @@ The `obsidian-remarkable-bridge` project is a personal tool developed in Python.
 
 Branch: `feature/0000_InitializeProject`
 
-Commit: `[0000] chore(project): initialize project structure`
+Commit: `[0000] feat(orsync): initialize project structure`
 
 **Changes**
 - Add initial README

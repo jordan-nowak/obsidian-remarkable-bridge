@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obsidian-remarkable-bridge"
-version = "0.0.0"
+version = "0.1.0"
 description = "A Python project that synchronizes Obsidian Markdown notes to a ReMarkable 2 as PDF files via SSH."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -39,7 +39,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=90"
-testpaths = ["tests"]
+testpaths = ["tests/unit/"]
 python_files = ["test_*.py"]
 pythonpath = ["src"]
 markers = [
@@ -51,6 +51,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
+omit = ["tests/functional/*"]
 branch = true
 
 [tool.coverage.report]

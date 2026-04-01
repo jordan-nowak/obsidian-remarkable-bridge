@@ -5,6 +5,9 @@ vault_path: "C:/Users/Nowak/Desktop/obsidian-vault"
 # __ reMarkable - SSH (by USB) _____________________________________
 remarkable_ip_usb: "10.11.99.1"
 
+# __ reMarkable - SSH (by Wifi) ____________________________________
+remarkable_ip_wifi: ""
+
 # Path to the private SSH key (without passphrase)
 ssh_key_path: "~/.ssh/id_rsa_remarkable"
 

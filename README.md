@@ -102,6 +102,12 @@ Don't forget to develop tests for each development made. It is necessary to run 
 pytest
 ```
 
+Before pushing, also run the linter and formatter:
+```bash
+ruff check src/ tests/
+black src/ tests/
+```
+
 ## License
 The license that applies to the whole package content is MIT. Please look at the [LICENSE](./LICENSE) file at the root of this repository for more details.
 
