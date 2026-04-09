@@ -476,21 +476,3 @@ def test_run_check_missing_ssh_key_recorded_as_failure(mock_pandoc_found, valid_
 # If no prior bugs or regressions have been identified,
 # this section remains empty until needed.
 # ============================================================
-
-## def test_run_check_pandoc_absent_does_not_call_subprocess(mock_pandoc_missing, mock_ssh_success, valid_config):
-##     """subprocess.run must not be called when Pandoc is absent from PATH."""
-##     with patch("orsync.setup_check.subprocess.run") as mock_run:
-##         run_check(valid_config)
-##         mock_run.assert_not_called()
-##
-##
-## def test_run_check_all_ok_false_when_pandoc_missing(mock_pandoc_missing, mock_ssh_success, valid_config):
-##     """all_ok must be False when Pandoc is absent, even if SSH succeeds."""
-##     report = run_check(valid_config)
-##     assert report.all_ok is False
-##
-##
-## def test_run_check_all_ok_false_when_ssh_fails(mock_pandoc_found, mock_ssh_failure, valid_config):
-##     """all_ok must be False when SSH fails, even if Pandoc is present."""
-##     report = run_check(valid_config)
-##     assert report.all_ok is False

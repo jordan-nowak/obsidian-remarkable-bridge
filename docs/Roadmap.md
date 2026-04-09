@@ -30,8 +30,8 @@
 
 | Ref | Feature | Status |
 |-----|---------|--------|
-| [0001](./ADRs/0001_SetupCheck.md) | Setup check - hardware and software installation | 🔄 |
-| [0002] | Vault scanner - Obsidian folder tree and wikilink resolution | 📋 |
+| [0001](./ADRs/0001_SetupCheck.md) | Setup check - hardware and software installation | ✅ |
+| [0002](./ADRs/0002_VaultScanner.md) | Vault scanner - Obsidian folder tree and wikilink resolution | 🔄 |
 
 ---
 

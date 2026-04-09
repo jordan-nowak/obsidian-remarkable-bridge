@@ -71,7 +71,7 @@ class CheckReport:
 
 
 # ============================================================
-# INTERNAL CHECK HELPERS
+# INTERNAL HELPERS
 # ============================================================
 
 
@@ -154,7 +154,7 @@ def _check_ssh(label: str, ip: str, key_path: str, timeout: int) -> CheckItem:
         Result of the connection attempt - never raises.
     """
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # [TODO] c'est quoi ?
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
         client.connect(
