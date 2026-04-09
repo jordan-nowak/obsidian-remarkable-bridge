@@ -54,17 +54,30 @@
 
 **Test Assumptions**
 - All SSH and subprocess calls are mocked - no physical device required.
-- SSH scenarios cover: USB success, WiFi success, USB failure with WiFi fallback,
-  total failure, timeout, missing key, authentication error.
+- SSH scenarios cover: USB success, WiFi success, USB failure with WiFi fallback, total failure, timeout, missing key, authentication error.
 - Pandoc scenarios cover: found, missing from PATH, non-zero return code, timeout.
 
 **Success Criteria**
 - `run_check` always returns a `CheckReport` (never raises an exception).
 - `CheckReport.all_ok` is `False` as soon as a single item fails.
-- The firmware is read via USB by default, via WiFi as a fallback, marked `skipped` if
-  both fail.
+- The firmware is read via USB by default, via WiFi as a fallback, marked `skipped` if both fail.
 - The WiFi check is marked `skipped` (status `True`) when no WiFi IP is configured.
 - `run_check` returns exactly 5 items, with or without WiFi configured.
+
+#### Module : `vault.py`
+
+`vault.py` handles the interaction with an Obsidian vault. It is responsible for discovering Markdown files, resolving Obsidian-style `[[wikilinks]]`, and exposing a simplified representation of the vault structure.
+
+**Test Assumptions**
+- Tests run on temporary directories to simulate real vaults.
+- No external dependencies are required.
+
+**Success Criteria**
+- The module correctly discovers all Markdown files in a vault.
+- Wikilinks are properly converted into standard Markdown links when the target exists.
+- Invalid or missing links are handled safely without breaking the content.
+- Relative paths are correctly computed across directories.
+- The vault structure is represented in a readable and deterministic way.
 
 ---
 

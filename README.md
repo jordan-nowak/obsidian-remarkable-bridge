@@ -104,8 +104,8 @@ pytest
 
 Before pushing, also run the linter and formatter:
 ```bash
-ruff check src/ tests/
-black src/ tests/
+black scripts/ src/ tests/
+ruff check scripts/ src/ tests/
 ```
 
 ## License
