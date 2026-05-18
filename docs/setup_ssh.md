@@ -55,10 +55,10 @@ You will be prompted for the root password-this is the **only and last time**.
 
 ```powershell
 # 1. Create ~/.ssh on the tablet with the correct permissions
-ssh root@10.11.99.1 “mkdir -p ~/.ssh && chmod 700 ~/.ssh”
+ssh root@10.11.99.1 “mkdir -p ~/.ssh && chmod 700 ~/.ssh"
 
 # 2. Deploy the key and secure authorized_keys
-type $env:USERPROFILE\.ssh\id_rsa_remarkable.pub | ssh root@10.11.99.1 “cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys”
+type $env:USERPROFILE\.ssh\id_rsa_remarkable.pub | ssh root@10.11.99.1 “cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
 
 ### Linux / macOS
