@@ -350,7 +350,6 @@ def test_preprocess_spacing_skips_rules_inside_code_fence():
 
 def test_preprocess_spacing_exits_tilde_fence_correctly():
     """_preprocess_spacing must exit a ~~~ fence when the closing ~~~ is reached.
-
     Covers converter.py lines 165-168 (elif branch for fence closure).
     """
     text = "Before fence.\n~~~\n- list inside fence\n~~~\n- list outside fence"

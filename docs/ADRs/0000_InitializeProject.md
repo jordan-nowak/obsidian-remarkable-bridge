@@ -20,7 +20,7 @@ The `obsidian-remarkable-bridge` project is a personal tool developed in Python.
 
 **Project**
 - `src/` directory structure using the `orsync` package. Prevents accidental imports from the root directory during testing.
-- `pyproject.toml` with `setuptools>=68` – modern standard, no `setup.py`.
+- `pyproject.toml` with `setuptools>=68` - modern standard, no `setup.py`.
 - `paramiko` (SSH), `pyyaml` (config). Minimal dependencies.
 
 **Quality tools**

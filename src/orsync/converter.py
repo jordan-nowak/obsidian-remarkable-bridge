@@ -24,7 +24,7 @@ System requirements:
 Asset structure (next to this file):
     assets/
     ├── eink.typ        main Typst template
-    └── emojis.json     name -> codepoint mapping  {“smile": “😄", ...}
+    └── emojis.json     name -> codepoint mapping  {"smile": "😄", ...}
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ _LIST_ITEM_RE = re.compile(r"^(\s*[-*+]|\s*\d+\.)\s")
 
 
 def _assets_dir() -> Path:
-    """The “assets/" directory located next to this file."""
+    """The "assets/" directory located next to this file."""
     return Path(__file__).parent / "assets"
 
 
@@ -398,7 +398,6 @@ def to_pdf_raw(
 
         # Step 2 - Pandoc: Markdown -> Typst source
         out_typ = tmp / "doc.typ"
-
         # Delete the .typ file if it already exists
         if out_typ.exists():
             out_typ.unlink()

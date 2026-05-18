@@ -11,9 +11,9 @@ author: JNO
 The synchronization pipeline requires two things from the Obsidian vault:
 
 1. **A list of all `.md` files** to be synchronized. The Obsidian vault may contain hundreds of notes spread across nested subfolders.
-2. **“Clean” Markdown content** passed to Pandoc for PDF conversion. `[[NoteA]]` wikilinks are non-standard Obsidian syntax that Pandoc does not understand. If left as is, they appear verbatim in the PDF or cause conversion errors.
+2. **"Clean" Markdown content** passed to Pandoc for PDF conversion. `[[NoteA]]` wikilinks are non-standard Obsidian syntax that Pandoc does not understand. If left as is, they appear verbatim in the PDF or cause conversion errors.
 
-This module is the first step in sending files from the PC to the tablet. It operates solely on the PC’s local file system.
+This module is the first step in sending files from the PC to the tablet. It operates solely on the PC's local file system.
 
 ## Decision
 
