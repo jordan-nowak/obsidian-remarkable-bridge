@@ -56,6 +56,9 @@
 - All SSH and subprocess calls are mocked - no physical device required.
 - SSH scenarios cover: USB success, WiFi success, USB failure with WiFi fallback, total failure, timeout, missing key, authentication error.
 - Pandoc scenarios cover: found, missing from PATH, non-zero return code, timeout.
+- XeLaTeX scenarios cover: found, missing from PATH, non-zero return code, timeout.
+- WeasyPrint scenarios cover: found + render ok, not installed (ImportError), installed but native render raises (Cairo/Pango broken).
+- Conditional mode scenarios cover: mode=raw (WeasyPrint skipped), mode=eink (XeLaTeX skipped), mode=both (both checked), mode absent from config (defaults to raw).
 
 **Success Criteria**
 - `run_check` always returns a `CheckReport` (never raises an exception).
@@ -63,6 +66,10 @@
 - The firmware is read via USB by default, via WiFi as a fallback, marked `skipped` if both fail.
 - The WiFi check is marked `skipped` (status `True`) when no WiFi IP is configured.
 - `run_check` returns exactly 5 items, with or without WiFi configured.
+- XeLaTeX check is included if and only if conversion_mode is `raw` or `both`.
+- WeasyPrint check is included if and only if conversion_mode is `eink` or `both`.
+- WeasyPrint check performs a minimal render, not just an import.
+- `run_check` returns exactly 5 items when mode is `raw` or `eink`, and 6 items when mode is `both`.
 
 #### Module : `vault.py`
 
@@ -78,6 +85,32 @@
 - Invalid or missing links are handled safely without breaking the content.
 - Relative paths are correctly computed across directories.
 - The vault structure is represented in a readable and deterministic way.
+
+#### Module : `converter.py`
+
+`converter.py` converts `.md` files to PDF in two modes: `raw` (Pandoc + XeLaTeX, no stylesheet) and `eink` (Pandoc -> HTML -> WeasyPrint + CSS, emoji-capable, e-ink optimised).
+
+The two modes are independent functions with distinct dependency profiles: `raw` requires only Pandoc; `eink` additionally requires WeasyPrint (optional dependency) and the bundled CSS and Noto Emoji font from `src/orsync/assets/`.
+
+**Test Assumptions**
+- All `subprocess.run` calls are mocked - no Pandoc binary required.
+- `weasyprint` is mocked via `patch.dict("sys.modules")` - no WeasyPrint install required in CI.
+- The temporary HTML file (eink pipeline) is simulated by writing it before calling `to_pdf_eink()` and asserting it is deleted after.
+- CSS path scenarios cover: explicit path (used as-is), `None` (bundled default resolved via `_default_css()`), missing path (FileNotFoundError).
+
+**Success Criteria**
+- `check_pandoc()` raises `EnvironmentError` with install URL when Pandoc is absent from PATH.
+- `to_pdf_raw()` raises `FileNotFoundError` when `md_path` does not exist.
+- `to_pdf_raw()` passes `--pdf-engine=lualatex` to Pandoc.
+- `to_pdf_raw()` raises `RuntimeError` on non-zero Pandoc exit; error message includes stderr.
+- `to_pdf_raw()` raises `RuntimeError` on Pandoc timeout.
+- `to_pdf_eink()` raises `FileNotFoundError` when `md_path` does not exist.
+- `to_pdf_eink()` raises `FileNotFoundError` when the CSS path does not exist.
+- `to_pdf_eink()` raises `ImportError` with `pip install` hint when WeasyPrint is not installed.
+- `to_pdf_eink()` calls Pandoc with `-t html` before calling WeasyPrint.
+- `to_pdf_eink()` passes the CSS file to WeasyPrint as a stylesheet.
+- `to_pdf_eink()` deletes the temporary HTML file on both success and failure (finally block).
+- `to_pdf_eink()` uses `_default_css()` when `css=None`; uses the explicit path without calling `_default_css()` when a path is provided.
 
 ---
 

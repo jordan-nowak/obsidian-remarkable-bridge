@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obsidian-remarkable-bridge"
-version = "0.2.0"
+version = "0.3.0"
 description = "A Python project that synchronizes Obsidian Markdown notes to a ReMarkable 2 as PDF files via SSH."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -35,6 +35,12 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Assets bundled with the package:
+# - eink.typ    : Typst template for e-ink PDF rendering (eink mode)
+# - emojis.json : emoji shortcode -> Unicode mapping (preprocessing step)
+orsync = ["assets/eink.typ", "assets/emojis.json"]
+
 # __ pytest _________________________________________________________
 
 [tool.pytest.ini_options]
@@ -45,6 +51,7 @@ pythonpath = ["src"]
 markers = [
     "slow: marks tests as slow (deselect with '-m not slow')",
     "integration: marks tests as integration tests (deselect with '-m not integration')",
+    "functional: marks tests as functional tests requiring real hardware",
 ]
 
 # __ coverage _______________________________________________________
@@ -87,6 +94,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long
+    "UP024", # EnvironmentError is preferred over OSError for tools not in the PATH
 ]
 
 [tool.ruff.lint.isort]

@@ -3,20 +3,33 @@
 vault_path: "C:/Users/Nowak/Desktop/obsidian-vault"
 
 # __ reMarkable - SSH (by USB) _____________________________________
+# Static IP exposed by the reMarkable over USB-C.
 remarkable_ip_usb: "10.11.99.1"
 
 # __ reMarkable - SSH (by Wifi) ____________________________________
+# WiFi IP of the reMarkable (find it in Settings > Help > Copyrights).
+# Leave empty ("") to skip the WiFi check entirely.
 remarkable_ip_wifi: ""
 
-# Path to the private SSH key (without passphrase)
+# Path to the private SSH key deployed on the tablet (no passphrase).
+# Tilde (~) is expanded at runtime. See docs/setup_ssh.md.
 ssh_key_path: "~/.ssh/id_rsa_remarkable"
 
-# SSH connection timeout in seconds
+# SSH connection timeout in seconds. Increase if on a slow network.
 ssh_timeout: 5
 
 # __ reMarkable - obsidian notes ________________________________
+# Name of the folder created on the reMarkable to receive synced notes.
 target_folder: "obsidian-notes"
 
 # __ Conversion ____________________________________________________
-# PDF conversion mode: "raw" (no styling) or “eink” (e-ink optimized)
+# PDF conversion mode:
+#   "raw"  - Pandoc + Typst without template. Fast. Emojis preprocessed.
+#   "eink" - Pandoc + Typst with assets/eink.typ template.
+#            Optimised typography, A5 page, 20mm margins, emoji support.
+# Default (if absent): "eink"
 pdf_mode: "eink"
+
+# Display Pandoc and Typst command output during conversion.
+# Useful for diagnosing rendering issues. Default: false.
+# verbose: false

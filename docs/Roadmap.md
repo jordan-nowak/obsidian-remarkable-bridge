@@ -31,7 +31,7 @@
 | Ref | Feature | Status |
 |-----|---------|--------|
 | [0001](./ADRs/0001_SetupCheck.md) | Setup check - hardware and software installation | ✅ |
-| [0002](./ADRs/0002_VaultScanner.md) | Vault scanner - Obsidian folder tree and wikilink resolution | 🔄 |
+| [0002](./ADRs/0002_VaultScanner.md) | Vault scanner - Obsidian folder tree and wikilink resolution | ✅ |
 
 ---
 
@@ -39,7 +39,17 @@
 
 | Ref | Feature | Status |
 |-----|---------|--------|
-| [0003] | Markdown to PDF conversion | 📋 |
+| [0003](./ADRs/0003_MarkdownToPdfConverter.md) | Markdown to PDF conversion (raw + eink via Typst) | ✅ |
+| [0003](./ADRs/0003_MarkdownToPdfConverter.md) | Emoji support (Unicode direct + shortcode substitution via emojis.json) | ✅ |
+| [0004] | Incremental sync engine - hash tracking and annotation protection | 📋 |
+| [0005] | SSH push to reMarkable - upload PDF with xochitl metadata | 📋 |
+
+## Phase 2 - Core Pipeline (MVP)
+
+| Ref | Feature | Status |
+|-----|---------|--------|
+| [0003](./ADRs/0003_MarkdownToPdfConverter.md) | Markdown to PDF conversion (raw + eink via Typst) | 🔄 |
+| [0003](./ADRs/0003_MarkdownToPdfConverter.md) | Emoji support (Unicode direct + shortcode substitution via emojis.json) | 🔄 |
 | [0004] | Incremental sync engine - hash tracking and annotation protection | 📋 |
 | [0005] | SSH push to reMarkable - upload PDF with xochitl metadata | 📋 |
 
@@ -58,7 +68,6 @@
 
 | Ref | Feature | Status |
 |-----|---------|--------|
-| [XXXX] | Emoji support in PDF - HTML/CSS pipeline via WeasyPrint or Chromium headless | 💡 |
 | [XXXX] | Enriched wikilink resolution - clickable links in generated PDF | 💡 |
 | [XXXX] | Watch mode - automatic sync on vault file change via `watchdog` | 💡 |
 | [XXXX] | Excalidraw export from reMarkable annotations | 💡 |
