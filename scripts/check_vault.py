@@ -38,7 +38,7 @@ stems = Counter(f.stem for f in files)
 duplicates = {stem: count for stem, count in stems.items() if count > 1}
 
 if duplicates:
-    print(f"Duplicate stems ({len(duplicates)}) — wikilinks to these will become plain text:")
+    print(f"Duplicate stems ({len(duplicates)}) - wikilinks to these will become plain text:")
     for stem, count in sorted(duplicates.items()):
         print(f"  [{count}x] {stem}")
 else:
