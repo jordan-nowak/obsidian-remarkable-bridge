@@ -106,24 +106,49 @@ def _render_tree(vault_path: Path, files: list[Path]) -> str:
     str
         Multi-line string with │ ├── └── characters.
     """
-    lines = [vault_path.name + "/"]
+    # Step 1 - Collect all nodes (subfolders + files) whilst preserving the sorted order and deduplicating folders.
+    nodes: list[Path] = []
     seen_dirs: set[Path] = set()
 
     for f in sorted(files):
         rel = f.relative_to(vault_path)
-        parts = rel.parts
-
-        # Add intermediate folders
-        for i in range(len(parts) - 1):
-            dir_path = vault_path.joinpath(*parts[: i + 1])
+        for i in range(len(rel.parts) - 1):
+            dir_path = vault_path.joinpath(*rel.parts[: i + 1])
             if dir_path not in seen_dirs:
-                indent = "    " * i
-                lines.append(f"{indent}└── {parts[i]}/")
+                nodes.append(dir_path)
                 seen_dirs.add(dir_path)
+        nodes.append(f)
 
-        # Add the file
-        indent = "    " * (len(parts) - 1)
-        lines.append(f"{indent}└── {parts[-1]}")
+    # Step 2 - For each node, determine whether it is the last child of its parent. Result: dict node -> is_last (bool).
+    is_last_map: dict[Path, bool] = {}
+    for node in nodes:
+        rel = node.relative_to(vault_path)
+        depth = len(rel.parts) - 1
+        siblings = [
+            n
+            for n in nodes
+            if n.parent == node.parent and len(n.relative_to(vault_path).parts) == depth + 1
+        ]
+        is_last_map[node] = node == siblings[-1]
+
+    # Step 3 - Calculate continuation prefixes │ by depth level.
+    # For each node, a 'd' should be displayed │ if the ancestor at that level is not itself the last child of its parent (i.e. there are still other siblings further down the tree).
+    def _prefix(node: Path) -> str:
+        rel = node.relative_to(vault_path)
+        depth = len(rel.parts) - 1
+        parts: list[str] = []
+        for d in range(depth):
+            ancestor = vault_path.joinpath(*rel.parts[: d + 1])
+            parts.append("    " if is_last_map.get(ancestor, True) else "│   ")
+        connector = "└── " if is_last_map[node] else "├── "
+        return "".join(parts) + connector
+
+    # Final rendering
+    lines = [vault_path.name + "/"]
+    for node in nodes:
+        rel = node.relative_to(vault_path)
+        label = rel.parts[-1] + ("/" if node.is_dir() else "")
+        lines.append(_prefix(node) + label)
 
     return "\n".join(lines)
 
@@ -160,7 +185,12 @@ def scan_vault(vault_path: Path) -> list[Path]:
     return sorted(vault_path.rglob("*.md"))
 
 
-def resolve_wikilinks_in_file(md_path: Path, vault_path: Path) -> str:
+def resolve_wikilinks_in_file(
+    md_path: Path,
+    vault_path: Path,
+    *,
+    index: dict[str, Path] | None = None,
+) -> str:
     """
     Read a Markdown file and return its content with wikilinks resolved.
 
@@ -169,7 +199,13 @@ def resolve_wikilinks_in_file(md_path: Path, vault_path: Path) -> str:
     md_path : Path
         Absolute path to the .md file to process.
     vault_path : Path
-        Root directory of the vault (used to build the resolution index).
+        Root directory of the vault (used to build the resolution index
+        when *index* is not provided).
+    index : dict[str, Path] | None, optional
+        Pre-built vault index mapping note stems to their absolute paths.
+        Pass this when converting multiple files to avoid rebuilding the
+        index on every call. Build it once with ``_build_index(vault_path)``
+        and reuse across calls. Defaults to None (index rebuilt each call).
 
     Returns
     -------
@@ -187,9 +223,9 @@ def resolve_wikilinks_in_file(md_path: Path, vault_path: Path) -> str:
     if not md_path.exists():
         raise FileNotFoundError(f"Markdown file not found: {md_path}")
 
-    index = _build_index(vault_path)
+    resolved_index = index if index is not None else _build_index(vault_path)
     content = md_path.read_text(encoding="utf-8")
-    return _resolve_wikilinks(content, index, md_path)
+    return _resolve_wikilinks(content, resolved_index, md_path)
 
 
 def vault_tree(vault_path: Path) -> str:
