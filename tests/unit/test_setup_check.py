@@ -8,20 +8,21 @@ UNIT TESTS
 1. Constructor & Initialization
 2. Accessors (Getters / Setters)
 3. Main Methods
-4. Fundamental Behavior & Mathematical Properties
+4. Fundamental Behavior & Resilience
 5. Special Cases & Tolerance
 6. Regression & Non-Regression
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock, patch
 
 import paramiko
 import pytest
 
-from orsync.setup_check import CheckItem, CheckReport, run_check
+from orsync.setup_check import CheckItem, CheckReport, _open_ssh_session, check_typst, run_check
 
 # ============================================================
 # 0. FIXTURES & SETUP
@@ -36,6 +37,7 @@ def valid_config() -> dict:
         "remarkable_ip_wifi": "192.168.1.42",
         "ssh_key_path": "/home/user/.ssh/id_rsa_remarkable",
         "ssh_timeout": 2,
+        "conversion_mode": "raw",
     }
 
 
@@ -52,51 +54,78 @@ def config_without_wifi() -> dict:
 
 @pytest.fixture
 def mock_ssh_success():
-    """Mock of paramiko.SSHClient simulating a successful SSH connection."""
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.exec_command.return_value = (
-            MagicMock(),
-            MagicMock(read=lambda: b"3.11.2.4"),
-            MagicMock(),
-        )
+    """Mock of _open_ssh_session simulating a successful SSH connection."""
+    mock_client = MagicMock()
+    mock_client.exec_command.return_value = (
+        MagicMock(),
+        MagicMock(read=lambda: b"3.11.2.4"),
+        MagicMock(),
+    )
+    with patch("orsync.setup_check._open_ssh_session") as mock_ctx:
+        mock_ctx.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         yield mock_client
 
 
 @pytest.fixture
 def mock_ssh_only_wifi_success():
     """Mock simulating USB SSH failure and WiFi SSH success."""
+    mock_client = MagicMock()
+    mock_client.exec_command.return_value = (
+        MagicMock(),
+        MagicMock(read=lambda: b"3.11.2.4"),
+        MagicMock(),
+    )
     call_count = 0
 
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
+    def enter_side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise OSError("USB not available")
+        return mock_client
 
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise OSError("USB not available")
-            return None
-
-        mock_client.connect.side_effect = side_effect
-        mock_client.exec_command.return_value = (
-            MagicMock(),
-            MagicMock(read=lambda: b"3.11.2.4"),
-            MagicMock(),
-        )
+    with patch("orsync.setup_check._open_ssh_session") as mock_ctx:
+        mock_ctx.return_value.__enter__ = MagicMock(side_effect=enter_side_effect)
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         yield mock_client
 
 
 @pytest.fixture
+def mock_ssh_wifi_failure_usb_success():
+    """Mock simulating USB SSH success and WiFi SSH failure.
+
+    Dispatches on the IP argument passed to _open_ssh_session so the
+    behaviour is tied to the connection target, not to call order.
+    """
+    mock_usb_client = MagicMock()
+    mock_usb_client.exec_command.return_value = (
+        MagicMock(),
+        MagicMock(read=lambda: b"3.11.2.4"),
+        MagicMock(),
+    )
+
+    @contextmanager
+    def ssh_session_by_ip(ip: str, key_path: str, timeout: int):
+        if ip == "10.11.99.1":
+            yield mock_usb_client
+        else:
+            raise OSError("WiFi timeout")
+
+    with patch(
+        "orsync.setup_check._open_ssh_session",
+        side_effect=ssh_session_by_ip,
+    ):
+        yield mock_usb_client
+
+
+@pytest.fixture
 def mock_ssh_failure():
-    """Mock of paramiko.SSHClient simulating an SSH connection failure."""
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.connect.side_effect = OSError("Connection refused")
-        yield mock_client
+    """Mock of _open_ssh_session simulating an SSH connection failure."""
+    with patch("orsync.setup_check._open_ssh_session") as mock_ctx:
+        mock_ctx.return_value.__enter__ = MagicMock(side_effect=OSError("Connection refused"))
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        yield mock_ctx
 
 
 @pytest.fixture
@@ -145,25 +174,12 @@ def mock_pandoc_timeout():
 # ============================================================
 
 
-def test_constructor_item_name_stored_correctly():
-    """item.name must be stored as a string with the correct value."""
-    item = CheckItem(name="test", status=True, detail="ok")
-    assert isinstance(item.name, str)
-    assert item.name == "test"
-
-
-def test_constructor_item_status_stored_correctly():
-    """item.status must be stored as a boolean with the correct value."""
-    item = CheckItem(name="test", status=True, detail="ok")
-    assert isinstance(item.status, bool)
+def test_check_item_stores_all_fields():
+    """CheckItem must expose name, status and detail as provided."""
+    item = CheckItem(name="Pandoc", status=True, detail="pandoc 3.1.2")
+    assert item.name == "Pandoc"
     assert item.status is True
-
-
-def test_constructor_item_detail_stored_correctly():
-    """item.detail must be stored as a string with the correct value."""
-    item = CheckItem(name="test", status=True, detail="ok")
-    assert isinstance(item.detail, str)
-    assert item.detail == "ok"
+    assert item.detail == "pandoc 3.1.2"
 
 
 def test_constructor_report_all_ok_true_when_empty():
@@ -254,6 +270,50 @@ def test_repr_report_invalid_status_case():
 # ============================================================
 
 
+def test_open_ssh_session_yields_connected_client():
+    """_open_ssh_session must yield the paramiko client when connection succeeds."""
+    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value = mock_client
+        mock_client.connect.return_value = None
+
+        with _open_ssh_session("10.11.99.1", "/path/key", 5) as client:
+            assert client is mock_client
+
+        mock_client.connect.assert_called_once_with(
+            hostname="10.11.99.1",
+            username="root",
+            key_filename="/path/key",
+            timeout=5,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+
+def test_open_ssh_session_closes_client_on_success():
+    """_open_ssh_session must call client.close() after the with block."""
+    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value = mock_client
+
+        with _open_ssh_session("10.11.99.1", "/path/key", 5):
+            pass
+
+        mock_client.close.assert_called_once()
+
+
+def test_open_ssh_session_closes_client_on_exception():
+    """_open_ssh_session must call client.close() even when the body raises."""
+    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
+        mock_client = MagicMock()
+        mock_cls.return_value = mock_client
+
+        with pytest.raises(RuntimeError), _open_ssh_session("10.11.99.1", "/path/key", 5):
+            raise RuntimeError("body error")
+
+        mock_client.close.assert_called_once()
+
+
 def test_run_check_detects_os(mock_pandoc_found, mock_ssh_success, valid_config):
     """run_check must include an OS detection item with status=True."""
     report = run_check(valid_config)
@@ -263,7 +323,7 @@ def test_run_check_detects_os(mock_pandoc_found, mock_ssh_success, valid_config)
     assert os_items[0].detail != ""
 
 
-def test_run_check_pandoc_found_returns_success(mock_pandoc_found, mock_ssh_success, valid_config):
+def test_runcheck_pandoc_found_returns_success(mock_pandoc_found, mock_ssh_success, valid_config):
     """run_check must report Pandoc as success when shutil.which finds it."""
     report = run_check(valid_config)
     pandoc_items = [i for i in report.items if i.name == "Pandoc"]
@@ -272,7 +332,7 @@ def test_run_check_pandoc_found_returns_success(mock_pandoc_found, mock_ssh_succ
     assert "pandoc" in pandoc_items[0].detail.lower()
 
 
-def test_run_check_pandoc_missing_returns_failure(
+def test_runcheck_pandoc_missing_returns_failure(
     mock_pandoc_missing, mock_ssh_success, valid_config
 ):
     """run_check must report Pandoc as failure when not found in PATH."""
@@ -283,7 +343,7 @@ def test_run_check_pandoc_missing_returns_failure(
     assert "PATH" in pandoc_items[0].detail
 
 
-def test_run_check_pandoc_returns_non_zero_exit_code(
+def test_runcheck_pandoc_returns_non_zero_exit_code(
     mock_pandoc_non_zero_exit_code, mock_ssh_success, valid_config
 ):
     """run_check must report Pandoc as failure when found but return non-zero exit code."""
@@ -294,7 +354,7 @@ def test_run_check_pandoc_returns_non_zero_exit_code(
     assert "non-zero exit code" in pandoc_items[0].detail
 
 
-def test_run_check_pandoc_timeout_returns_failure(
+def test_runcheck_pandoc_timeout_returns_failure(
     mock_pandoc_timeout, mock_ssh_success, valid_config
 ):
     """run_check must report Pandoc as failure when pandoc timeout appears on --version."""
@@ -347,22 +407,67 @@ def test_run_check_firmware_via_wifi_when_usb_fails(
     assert fw_items[0].detail != ""
 
 
-def test_run_check_returns_five_items_with_wifi(mock_pandoc_found, mock_ssh_success, valid_config):
-    """run_check must return exactly 5 CheckItems when WiFi IP is configured."""
+def test_run_check_returns_six_items_with_wifi(mock_pandoc_found, mock_ssh_success, valid_config):
+    """run_check must return exactly 6 CheckItems when WiFi IP is configured."""
     report = run_check(valid_config)
-    assert len(report.items) == 5
+    assert len(report.items) == 6
 
 
-def test_run_check_returns_five_items_without_wifi(
+def test_run_check_returns_six_items_without_wifi(
     mock_pandoc_found, mock_ssh_success, config_without_wifi
 ):
-    """run_check must return exactly 5 CheckItems even when WiFi is skipped."""
+    """run_check must return exactly 6 CheckItems even when WiFi is skipped."""
     report = run_check(config_without_wifi)
-    assert len(report.items) == 5
+    assert len(report.items) == 6
+
+
+def test_check_typst_returns_true_when_found():
+    """check_typst must return status=True when typst is in PATH."""
+    with (
+        patch("orsync.setup_check.shutil.which", return_value="/usr/bin/typst"),
+        patch("orsync.setup_check.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="XeTeX 3.141 (TeX Live 2023)\n")
+        item = check_typst()
+    assert item.status is True
+    assert "XeTeX" in item.detail
+
+
+def test_check_typst_returns_false_when_missing():
+    """check_typst must return status=False when typst is not in PATH."""
+    with patch("orsync.setup_check.shutil.which", return_value=None):
+        item = check_typst()
+    assert item.status is False
+    assert "typst" in item.detail.lower()
+
+
+def test_check_typst_returns_false_on_nonzero_exit():
+    """check_typst must return status=False when typst --version exits non-zero."""
+    with (
+        patch("orsync.setup_check.shutil.which", return_value="/usr/bin/typst"),
+        patch("orsync.setup_check.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        item = check_typst()
+    assert item.status is False
+
+
+def test_check_typst_returns_false_on_timeout():
+    """check_typst must return status=False when typst --version times out."""
+    with (
+        patch("orsync.setup_check.shutil.which", return_value="/usr/bin/typst"),
+        patch(
+            "orsync.setup_check.subprocess.run",
+            side_effect=TimeoutExpired(cmd="typst", timeout=5),
+        ),
+    ):
+        item = check_typst()
+    assert item.status is False
+    assert "timed out" in item.detail
 
 
 # ============================================================
-# 4. FUNDAMENTAL BEHAVIOR & MATHEMATICAL PROPERTIES
+# 4. FUNDAMENTAL BEHAVIOR & RESILIENCE
 # ============================================================
 
 
@@ -374,30 +479,18 @@ def test_run_check_ssh_failure_does_not_raise_exception(
     assert isinstance(report, CheckReport)
 
 
-def test_run_check_wifi_failure_does_not_block_usb_check(mock_pandoc_found, valid_config):
-    """A WiFi SSH failure must not prevent the USB check from running."""
-    call_count = 0
-
-    def side_effect_by_call(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return None  # USB succeeds
-        raise OSError("WiFi timeout")  # WiFi fails
-
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.connect.side_effect = side_effect_by_call
-        mock_client.exec_command.return_value = (
-            MagicMock(),
-            MagicMock(read=lambda: b"3.11.2.4"),
-            MagicMock(),
-        )
-        report = run_check(valid_config)
+def test_run_check_wifi_failure_does_not_block_usb_check(
+    mock_pandoc_found, mock_ssh_wifi_failure_usb_success, valid_config
+):
+    """A WiFi SSH failure must not prevent the USB check from reporting success."""
+    report = run_check(valid_config)
 
     usb_items = [i for i in report.items if i.name == "SSH USB connection"]
-    assert usb_items[0].status is True
+    wifi_items = [i for i in report.items if i.name == "SSH WiFi connection"]
+
+    assert usb_items[0].status is True, "USB check must succeed"
+    assert wifi_items[0].status is False, "WiFi check must fail"
+    assert "WiFi timeout" in wifi_items[0].detail
 
 
 def test_run_check_firmware_skipped_if_both_ssh_fail(
@@ -409,6 +502,21 @@ def test_run_check_firmware_skipped_if_both_ssh_fail(
     assert len(fw_items) == 1
     assert fw_items[0].status is False
     assert "skipped" in fw_items[0].detail.lower()
+
+
+def test_execute_catches_unexpected_exception_and_records_failure(mock_pandoc_found, valid_config):
+    """_execute must catch any unexpected exception from a check and record a failure."""
+    from orsync.setup_check import _execute
+
+    def exploding_check() -> CheckItem:
+        raise ValueError("unexpected crash")
+
+    # Inject the faulty check directly into _execute
+    report = _execute([exploding_check])
+    assert len(report.items) == 1
+    assert report.items[0].status is False
+    assert "unexpected error" in report.items[0].detail
+    assert "unexpected crash" in report.items[0].detail
 
 
 # ============================================================
@@ -429,10 +537,9 @@ def test_run_check_no_wifi_ip_skips_wifi_check(
 
 def test_run_check_ssh_timeout_recorded_as_failure(mock_pandoc_found, valid_config):
     """A connection timeout must be recorded as a failed CheckItem, not raised."""
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.connect.side_effect = TimeoutError("timed out")
+    with patch("orsync.setup_check._open_ssh_session") as mock_ctx:
+        mock_ctx.return_value.__enter__ = MagicMock(side_effect=TimeoutError("timed out"))
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         report = run_check(valid_config)
 
     usb_items = [i for i in report.items if i.name == "SSH USB connection"]
@@ -442,10 +549,9 @@ def test_run_check_ssh_timeout_recorded_as_failure(mock_pandoc_found, valid_conf
 
 def test_run_check_authentication_failure_recorded_as_failure(mock_pandoc_found, valid_config):
     """An SSH AuthenticationException must be recorded as failure with actionable detail."""
-    with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.connect.side_effect = paramiko.AuthenticationException()
+    with patch("orsync.setup_check._open_ssh_session") as mock_ctx:
+        mock_ctx.return_value.__enter__ = MagicMock(side_effect=paramiko.AuthenticationException())
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         report = run_check(valid_config)
 
     usb_items = [i for i in report.items if i.name == "SSH USB connection"]
@@ -454,11 +560,11 @@ def test_run_check_authentication_failure_recorded_as_failure(mock_pandoc_found,
 
 
 def test_run_check_missing_ssh_key_recorded_as_failure(mock_pandoc_found, valid_config):
-    """A missing SSH key file must be recorded as failure with the key path in detail."""
+    """SSH key not found must be recorded with the key path in detail."""
     with patch("orsync.setup_check.paramiko.SSHClient") as mock_cls:
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.connect.side_effect = FileNotFoundError("key not found")
+        mock_client.connect.side_effect = FileNotFoundError("/home/user/.ssh/id_rsa_remarkable")
         report = run_check(valid_config)
 
     usb_items = [i for i in report.items if i.name == "SSH USB connection"]

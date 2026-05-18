@@ -45,6 +45,7 @@ py -m pip install -e .[dev]
 **Prerequisites:**
 - Python 3.11+
 - [Pandoc](https://pandoc.org/installing.html) - must be available in PATH
+- [Typst](https://typst.app) - must be available in PATH
 - SSH access to reMarkable 2 (USB or WiFi) - see [SSH Setup](./docs/setup_ssh.md)
 
 ---

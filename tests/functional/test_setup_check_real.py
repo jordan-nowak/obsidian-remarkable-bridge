@@ -19,7 +19,7 @@ def _prompt(message: str) -> None:
 
 
 # ============================================================
-# 1. NOMINAL — tablet connected
+# 1. NOMINAL - tablet connected
 # ============================================================
 
 
@@ -41,13 +41,13 @@ def test_firmware_version_is_non_empty(real_config):
 
 
 # ============================================================
-# 2. DEGRADED — tablet disconnected
+# 2. DEGRADED - tablet disconnected
 # ============================================================
 
 
 def test_ssh_fails_gracefully_when_tablet_disconnected(real_config):
     """SSH check must return status=False with a non-empty detail when the tablet is unplugged."""
-    _prompt("Unplug the reMarkable tablet now.")
+    _prompt("Unplug the reMarkable tablet.")
     report = run_check(real_config)
     usb = next(i for i in report.items if i.name == "SSH USB connection")
     assert usb.status is False
@@ -56,12 +56,13 @@ def test_ssh_fails_gracefully_when_tablet_disconnected(real_config):
 
 def test_all_ok_is_false_when_tablet_disconnected(real_config):
     """all_ok must be False when SSH cannot connect."""
+    _prompt("Unplug the reMarkable tablet.")
     report = run_check(real_config)
     assert report.all_ok is False
 
 
 # ============================================================
-# 3. RECOVERY — tablet reconnected
+# 3. RECOVERY - tablet reconnected
 # ============================================================
 
 
@@ -72,3 +73,18 @@ def test_check_recovers_after_reconnection(real_config):
     assert (
         report.all_ok
     ), f"Failed after reconnection: {[i.name for i in report.items if not i.status]}"
+
+
+# ============================================================
+# 4. CONVERSION DEPENDENCIES
+# ============================================================
+
+
+def test_typst_check_passes_when_installed(real_config):
+    """Typst check must return status=True with a non-empty version string when installed."""
+    _prompt("Make sure Typst is installed and in PATH.")
+    report = run_check(real_config)
+    typst = next(i for i in report.items if i.name == "Typst")
+    assert typst is not None, "Typst check not found in report"
+    assert typst.status is True, f"Typst check failed: {typst.detail}"
+    assert typst.detail.strip() != "", "Typst version string is empty"
