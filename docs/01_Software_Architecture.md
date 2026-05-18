@@ -36,7 +36,7 @@ obsidian-remarkable-bridge/
 │       ├── __init__.py
 │       ├── setup_check.py    # Verification of hardware and software installation
 │       ├── vault.py          # Scan the Obsidian vault and resolve wikilinks
-│       ├── converter.py      # Convert .md to PDF using Pandoc
+│       ├── converter.py      # Convert .md to PDF using Pandoc + Typst
 │       ├── sync_engine.py    # Decision logic: hash, annotations, versioning
 │       ├── remarkable.py     # SSH connection, PDF upload, folder creation + metadata
 │       ├── puller.py         # Pull of annotated notebooks from rM -> PC
@@ -86,7 +86,7 @@ Verifies that the PC environment and the connection to the tablet are operationa
 
 Key inputs / outputs:
 - **Input:** configuration (`config.yaml`)
-- **Output:** `[SUCCESS ✅] / [ERROR ❌]` report for each dependency checked
+- **Output:** `[SUCCESS ✅] / [ERROR ❌]` report for each dependency checked (OS, Pandoc, SSH USB, SSH WiFi, firmware, Typst)
 
 ### `vault.py`
 Scans the Obsidian vault directory tree and resolves basic wikilinks into relative paths.
@@ -98,16 +98,19 @@ Key inputs / outputs:
 ### `converter.py`
 Converts `.md` files to PDF via a two-step pipeline: Pandoc + Typst.
 
-Exposes two modes:
-- **`raw`** - Pandoc -> Typst -> PDF, without a template. Emojis in source are handled by the preprocessor.
-- **`eink`** - Same pipeline, but Pandoc uses the bundled `assets/eink.typ` template, which optimises typography, heading colours, margins and page size for e-ink readability.
+Exposes two modes, both driven by a **Strategy pattern**:
+- **`raw`** (`RawStrategy`) - Pandoc -> Typst -> PDF, without a template. Preprocessing applied.
+- **`eink`** (`TypstStrategy`) - Same pipeline, using the bundled `assets/eink.typ` template, which optimises typography, heading colours, margins and page size for e-ink readability.
 
 Both modes apply a Python preprocessing step before Pandoc:
 wikilink resolution, Obsidian callout conversion, emoji shortcode substitution, and spacing normalization.
 
+A post-processing step fixes `#horizontalrule` incompatibilities introduced by Pandoc before handing the `.typ` file to Typst.
+
 Key inputs / outputs:
 - **Input:** `src: Path`, `dst: Path`, optional `template`, `emoji_json`, `verbose`
 - **Output:** `.pdf` file generated at `dst`
+- **Strategy factory:** `make_strategy(config: dict) -> ConversionStrategy`
 
 ### `sync_engine.py`
 Detects the presence of annotations on each note on the tablet and decides which action to take. To do this, an MD5 hash comparison is performed between the source and the stored state.
@@ -139,7 +142,7 @@ Key inputs / outputs:
 ```flow
 1. config.yaml
 
-2. setup_check  - checks Pandoc, SSH, and tablet connection
+2. setup_check  - checks OS, Pandoc, Typst, SSH, and tablet connection
 
 3. vault        - lists .md files in the PC vault
 
@@ -147,7 +150,7 @@ Key inputs / outputs:
                 - queries Remarkable to detect annotations
 	            - decides: SKIP / OVERWRITE / VERSION
 
-5. converter    - .md -> .pdf (raw or eink mode)
+5. converter    - .md -> .pdf (raw or eink mode via ConversionStrategy)
 
 6. remarkable   - uploads .pdf + .metadata + .content via SSH
                 - restarts the tablet
@@ -185,15 +188,18 @@ Key inputs / outputs:
 
 ## Dependencies
 
-| Package      | Version | Role                                          |
-| ------------ | ------- | --------------------------------------------- |
-| `paramiko`   | ≥ 3.0   | SSH connection and SCP transfer to reMarkable |
-| `pandoc`     | ≥ 3.0   | Markdown to PDF conversion                    |
-| `pyyaml`     | ≥ 6.0   | Reading `config.yaml`                         |
-| `pytest`     | ≥ 7.0   | Testing framework                             |
-| `pytest-cov` | ≥ 4.0   | Test coverage                                 |
-| `black`      | ≥ 24.0  | Automatic formatting                          |
-| `ruff`       | ≥ 0.3   | Static lint                                   |
+| Package      | Version | Role                                            |
+| ------------ | ------- | ----------------------------------------------- |
+| `paramiko`   | ≥ 3.0   | SSH connection and SCP transfer to reMarkable   |
+| `pyyaml`     | ≥ 6.0   | Reading `config.yaml`                           |
+| `pandoc`     | ≥ 3.1   | Markdown to Typst conversion (system binary)    |
+| `typst`      | ≥ 0.11  | Typst source to PDF compilation (system binary) |
+| `pytest`     | ≥ 7.0   | Testing framework                               |
+| `pytest-cov` | ≥ 4.0   | Test coverage                                   |
+| `black`      | ≥ 24.0  | Automatic formatting                            |
+| `ruff`       | ≥ 0.3   | Static lint                                     |
+
+> **Note:** `pandoc` and `typst` are system binaries, not pip packages. Their presence is verified at startup by `setup_check.py`.
 
 ---
 

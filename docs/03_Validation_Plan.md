@@ -37,8 +37,8 @@
 
 ### Unit Tests
 
-> Tests per module, in isolation. All SSH calls, subprocess calls and filesystem side effects are mocked. No physical device required. 
-> 
+> Tests per module, in isolation. All SSH calls, subprocess calls and filesystem side effects are mocked. No physical device required.
+>
 > 6-category structure applied systematically:
 > 0. Fixtures & Setup
 > 1. Constructor & Initialization
@@ -50,26 +50,23 @@
 
 #### Module : `setup_check.py`
 
-`setup_check.py` verifies that the local environment is ready before the pipeline is launched: OS detected, Pandoc accessible, SSH connection to the tablet established, firmware version readable. Each check is independent-a failure in one does not block another.
+`setup_check.py` verifies that the local environment is ready before the pipeline is launched: OS detected, Pandoc accessible, SSH connection to the tablet established, firmware version readable, Typst accessible. Each check is independent — a failure in one does not block another.
 
 **Test Assumptions**
 - All SSH and subprocess calls are mocked - no physical device required.
 - SSH scenarios cover: USB success, WiFi success, USB failure with WiFi fallback, total failure, timeout, missing key, authentication error.
 - Pandoc scenarios cover: found, missing from PATH, non-zero return code, timeout.
-- XeLaTeX scenarios cover: found, missing from PATH, non-zero return code, timeout.
-- WeasyPrint scenarios cover: found + render ok, not installed (ImportError), installed but native render raises (Cairo/Pango broken).
-- Conditional mode scenarios cover: mode=raw (WeasyPrint skipped), mode=eink (XeLaTeX skipped), mode=both (both checked), mode absent from config (defaults to raw).
+- Typst scenarios cover: found, missing from PATH, non-zero return code, timeout.
 
 **Success Criteria**
 - `run_check` always returns a `CheckReport` (never raises an exception).
 - `CheckReport.all_ok` is `False` as soon as a single item fails.
 - The firmware is read via USB by default, via WiFi as a fallback, marked `skipped` if both fail.
 - The WiFi check is marked `skipped` (status `True`) when no WiFi IP is configured.
-- `run_check` returns exactly 5 items, with or without WiFi configured.
-- XeLaTeX check is included if and only if conversion_mode is `raw` or `both`.
-- WeasyPrint check is included if and only if conversion_mode is `eink` or `both`.
-- WeasyPrint check performs a minimal render, not just an import.
-- `run_check` returns exactly 5 items when mode is `raw` or `eink`, and 6 items when mode is `both`.
+- `run_check` returns exactly 6 items in all configurations (OS, Pandoc, SSH USB, SSH WiFi, firmware, Typst).
+- `_execute` catches any unexpected exception from a check and records it as a failed `CheckItem`.
+
+---
 
 #### Module : `vault.py`
 
@@ -85,62 +82,106 @@
 - Invalid or missing links are handled safely without breaking the content.
 - Relative paths are correctly computed across directories.
 - The vault structure is represented in a readable and deterministic way.
+- A pre-built index passed via `index=` parameter produces the same result as building it internally.
+
+---
 
 #### Module : `converter.py`
 
-`converter.py` converts `.md` files to PDF in two modes: `raw` (Pandoc + XeLaTeX, no stylesheet) and `eink` (Pandoc -> HTML -> WeasyPrint + CSS, emoji-capable, e-ink optimised).
+`converter.py` converts `.md` files to PDF via a two-step pipeline: Pandoc + Typst.
 
-The two modes are independent functions with distinct dependency profiles: `raw` requires only Pandoc; `eink` additionally requires WeasyPrint (optional dependency) and the bundled CSS and Noto Emoji font from `src/orsync/assets/`.
+Two modes are exposed through a **Strategy pattern**:
+- **`raw`** (`RawStrategy`) — Pandoc + Typst without a template.
+- **`eink`** (`TypstStrategy`) — Same pipeline with the bundled `eink.typ` Typst template, optimised for e-ink readability.
+
+Both modes apply a Python preprocessing step before Pandoc: wikilink resolution, Obsidian callout conversion, emoji shortcode substitution, and spacing normalization.
+
+A post-processing step (`_fix_typst_output`) patches `#horizontalrule` occurrences in the Pandoc-generated `.typ` file before Typst compilation.
 
 **Test Assumptions**
-- All `subprocess.run` calls are mocked - no Pandoc binary required.
-- `weasyprint` is mocked via `patch.dict("sys.modules")` - no WeasyPrint install required in CI.
-- The temporary HTML file (eink pipeline) is simulated by writing it before calling `to_pdf_eink()` and asserting it is deleted after.
-- CSS path scenarios cover: explicit path (used as-is), `None` (bundled default resolved via `_default_css()`), missing path (FileNotFoundError).
+- All `subprocess.run` calls are mocked — no Pandoc or Typst binary required in CI.
+- `_fix_typst_output` is patched in most section 3 tests (it reads `doc.typ` from disk, which pandoc never creates when mocked).
+- `emoji_json` scenarios cover: valid path (shortcodes substituted), `None` (no substitution), missing path (UserWarning emitted, non-fatal).
+- Template scenarios cover: explicit path (used as-is), `None` (default resolved via `default_typst_template()`), missing path (`FileNotFoundError`).
 
 **Success Criteria**
-- `check_pandoc()` raises `EnvironmentError` with install URL when Pandoc is absent from PATH.
-- `to_pdf_raw()` raises `FileNotFoundError` when `md_path` does not exist.
-- `to_pdf_raw()` passes `--pdf-engine=lualatex` to Pandoc.
-- `to_pdf_raw()` raises `RuntimeError` on non-zero Pandoc exit; error message includes stderr.
-- `to_pdf_raw()` raises `RuntimeError` on Pandoc timeout.
-- `to_pdf_eink()` raises `FileNotFoundError` when `md_path` does not exist.
-- `to_pdf_eink()` raises `FileNotFoundError` when the CSS path does not exist.
-- `to_pdf_eink()` raises `ImportError` with `pip install` hint when WeasyPrint is not installed.
-- `to_pdf_eink()` calls Pandoc with `-t html` before calling WeasyPrint.
-- `to_pdf_eink()` passes the CSS file to WeasyPrint as a stylesheet.
-- `to_pdf_eink()` deletes the temporary HTML file on both success and failure (finally block).
-- `to_pdf_eink()` uses `_default_css()` when `css=None`; uses the explicit path without calling `_default_css()` when a path is provided.
+
+*Asset helpers:*
+- `default_typst_template()` returns a `Path` pointing to `assets/eink.typ`.
+- `default_emoji_json()` returns a `Path` pointing to `assets/emojis.json`.
+
+*Preprocessors:*
+- `_preprocess_wikilinks`: `[[Note]]` → `[Note](Note.md)`, `[[T|A]]` → `[A](T.md)`, `![[e]]` → textual marker, standard links untouched.
+- `_preprocess_callouts`: all 10 known types produce their dedicated icon; unknown types use 📌; case-insensitive; standard blockquotes untouched.
+- `_preprocess_spacing`: blank line inserted before list item after non-list line; no blank line between consecutive list items; `> ` separator inserted inside blockquote after bold header; rules skipped inside backtick and tilde code fences.
+- `_preprocess_emojis`: known shortcodes replaced, unknown preserved, native Unicode untouched.
+- `_preprocess`: full pipeline applied in correct order; tables, inline math, block math, and unrelated content preserved unchanged.
+
+*`to_pdf_raw`:*
+- Invokes `pandoc` first, then `typst compile`.
+- Passes `-t typst` to Pandoc (not `--pdf-engine=lualatex`).
+- Raises `FileNotFoundError` if `src` does not exist.
+- Raises `RuntimeError` if Pandoc or Typst returns a non-zero exit code.
+- Propagates `TimeoutExpired` from subprocess.
+- Emits `UserWarning` (matching `"emojis.json"`) when the emoji JSON path does not exist — no exception.
+- Creates `dst.parent` directory if it does not exist.
+- Deletes a pre-existing `doc.typ` before invoking Pandoc.
+- Accepts `verbose=True` without raising.
+
+*`to_pdf_typst`:*
+- Invokes `pandoc` with `-t typst` and `--template`, then `typst compile`.
+- Raises `FileNotFoundError` if `src` does not exist.
+- Raises `FileNotFoundError` (matching `"Template"`) if the Typst template does not exist.
+- Uses `default_typst_template()` when `template=None`; does not call `default_typst_template()` when an explicit path is provided.
+- Raises `RuntimeError` on Pandoc or Typst failure.
+- Emits `UserWarning` when emoji JSON path is missing (non-fatal).
+- Deletes pre-existing `dst` PDF and `doc.typ` before conversion.
+- Creates `dst.parent` if it does not exist.
+
+*Strategy pattern:*
+- `make_strategy({})` defaults to `TypstStrategy`.
+- `make_strategy({"pdf_mode": "raw"})` returns `RawStrategy`.
+- `make_strategy({"pdf_mode": "latex"})` raises `ValueError` matching `"Unknown PDF mode"`.
+- `RawStrategy.convert()` calls `to_pdf_raw` with correct arguments.
+- `TypstStrategy.convert()` calls `to_pdf_typst` with correct arguments.
+
+*Fundamental behavior:*
+- Both modes produce identical preprocessed content from the same Obsidian source.
+- `_fix_typst_output` replaces `#horizontalrule` and overwrites the file; no-op when absent.
+- `_preprocess_spacing` correctly exits tilde (`~~~`) fences.
 
 ---
 
 ### Integration Tests
 
 > Tests of the full pipeline - multiple modules interacting. SSH and subprocess remain mocked; the vault and sync state use real temporary files.
-> 
-> This is the 7e structure applied systematically:
+>
+> This is the 7th section structure applied systematically:
 > 7. Interface contract with downstream modules
 
-#### [TODO] Module: `[module_name_1]`
-<!-- Focus on the high-level goals (why, what, under what conditions) 
-     without listing the tests one by one. -->
+#### Module: `converter.py`
+
+**7. Contract with `setup_check` (conversion pipeline prerequisites)**
+
+- `run_check` returning `all_ok=True` must be a necessary condition for a subsequent conversion call to succeed without raising a setup-related error.
 
 ---
 
 ### Functional Tests
 
 > Tests modules with real hardware, software and configuration.
-> 
+>
 > Run manually with `pytest tests/functional/ --functional --no-cov -s`. Never run in CI.
 
 #### Module : `setup_check.py`
 
-Covers three hardware states: tablet connected (nominal), tablet disconnected (degraded), and tablet reconnected (recovery). Each state is a separate test file.
+Covers three hardware states: tablet connected (nominal), tablet disconnected (degraded), and tablet reconnected (recovery). Each state is a separate test.
 
 **Prerequisites:**
 - USB connection
 - SSH key deployed
 - Pandoc installed
+- Typst installed
 
 ---
 
@@ -158,7 +199,7 @@ Covers three hardware states: tablet connected (nominal), tablet disconnected (d
 
 Coverage is measured by `pytest-cov` and enforced in CI. Any PR below the threshold is blocked.
 
-`sync_engine.py` is the only module that is 100% complete - this module determines whether to overwrite, skip, or version the notes stored on the tablet to prevent accidentally overwriting the user's annotations. Special attention is required for this module to ensure that no annotations are overwritten without warning.
+`sync_engine.py` is the only module that is 100% required — this module determines whether to overwrite, skip, or version the notes stored on the tablet to prevent accidentally overwriting the user's annotations. Special attention is required for this module to ensure that no annotations are overwritten without warning.
 
 ---
 
