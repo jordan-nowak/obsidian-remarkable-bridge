@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from orsync.vault import resolve_wikilinks_in_file, scan_vault, vault_tree
+from orsync.vault import _build_index, resolve_wikilinks_in_file, scan_vault, vault_tree
 
 # ============================================================
 # 0. FIXTURES & SETUP
@@ -196,6 +196,33 @@ def test_resolve_wikilinks_multiple_links_all_resolved(tmp_path: Path):
     assert "[[B]]" not in result
     assert "[A]" in result
     assert "[B]" in result
+
+
+def test_resolve_wikilinks_reuses_provided_index(tmp_path: Path):
+    """Passing a pre-built index must produce the same result as building it internally."""
+    (tmp_path / "NoteA.md").write_text("Target.", encoding="utf-8")
+    (tmp_path / "Source.md").write_text("See [[NoteA]].", encoding="utf-8")
+
+    shared_index = _build_index(tmp_path)
+    result_with_index = resolve_wikilinks_in_file(
+        tmp_path / "Source.md", tmp_path, index=shared_index
+    )
+    result_without_index = resolve_wikilinks_in_file(tmp_path / "Source.md", tmp_path)
+
+    assert result_with_index == result_without_index
+
+
+def test_resolve_wikilinks_shared_index_across_batch(tmp_path: Path):
+    """A shared index passed to multiple calls must resolve all files correctly."""
+    (tmp_path / "A.md").write_text("A", encoding="utf-8")
+    (tmp_path / "B.md").write_text("B", encoding="utf-8")
+    (tmp_path / "Source1.md").write_text("See [[A]].", encoding="utf-8")
+    (tmp_path / "Source2.md").write_text("See [[B]].", encoding="utf-8")
+
+    shared_index = _build_index(tmp_path)
+    for source in ["Source1.md", "Source2.md"]:
+        result = resolve_wikilinks_in_file(tmp_path / source, tmp_path, index=shared_index)
+        assert "[[" not in result
 
 
 # ============================================================
