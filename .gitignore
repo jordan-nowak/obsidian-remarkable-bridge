@@ -1,6 +1,7 @@
 # Project specific
 sync_state.json
 *.pdf
+.converter_check/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

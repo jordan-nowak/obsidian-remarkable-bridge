@@ -39,26 +39,38 @@ obsidian-remarkable-bridge/
 │       ├── converter.py      # Convert .md to PDF using Pandoc
 │       ├── sync_engine.py    # Decision logic: hash, annotations, versioning
 │       ├── remarkable.py     # SSH connection, PDF upload, folder creation + metadata
-│       └── puller.py         # Pull of annotated notebooks from rM -> PC
+│       ├── puller.py         # Pull of annotated notebooks from rM -> PC
+│       └── assets/
+│           ├── eink.typ      # Typst template for e-ink optimized PDF
+│           └── emojis.json   # Emoji shortcode -> Unicode mapping
 │
 ├── tests/
-│   ├── test_version.py
-│   ├── test_setup_check.py
-│   ├── test_vault.py
-│   ├── test_converter.py
-│   ├── test_sync_engine.py
-│   ├── test_remarkable.py
-│   └── test_puller.py
+│   ├── conftest.py
+│   ├── unit/
+│   │   ├── test_version.py
+│   │   ├── test_setup_check.py
+│   │   ├── test_vault.py
+│   │   ├── test_converter.py
+│   │   ├── test_sync_engine.py
+│   │   ├── test_remarkable.py
+│   │   └── test_puller.py
+│   └── functional/
+│       └── test_setup_check_real.py
 │
 ├── scripts/
-│   └── sync.py               # CLI: --push / --pull / --all / --check
+│   ├── check_converter.py    # Visual check of the converter pipeline
+│   ├── check_vault.py        # Functional check on a real vault
+│   ├── sync.py               # CLI: --push / --pull / --all / --check
+│   └── samples/sample.md     # A simple markdown file
 │
 ├── docs/
 │   ├── ADRs/                 # One ADR per feature
 │   ├── 01_Software_Architecture.md
 │   ├── 02_Detailed_Design.md
 │   ├── 03_Validation_Plan.md
-│   └── Roadmap.md
+│   ├── Roadmap.md
+│   └── setup_ssh.md
+│
 ├── sync_state.json           # Local state
 ├── config.yaml               # vault_path, remarkable_ip, target_folder
 ├── pyproject.toml
@@ -84,11 +96,18 @@ Key inputs / outputs:
 - **Output:** `list[Path]` - absolute paths of all `.md` files in the vault
 
 ### `converter.py`
-Converts an `.md` file to PDF via Pandoc, in raw or optimized e-ink mode.
+Converts `.md` files to PDF via a two-step pipeline: Pandoc + Typst.
+
+Exposes two modes:
+- **`raw`** - Pandoc -> Typst -> PDF, without a template. Emojis in source are handled by the preprocessor.
+- **`eink`** - Same pipeline, but Pandoc uses the bundled `assets/eink.typ` template, which optimises typography, heading colours, margins and page size for e-ink readability.
+
+Both modes apply a Python preprocessing step before Pandoc:
+wikilink resolution, Obsidian callout conversion, emoji shortcode substitution, and spacing normalization.
 
 Key inputs / outputs:
-- **Input:** `md_path: Path`, `output_path: Path`, mode (`raw` or `eink`)
-- **Output:** `.pdf` file generated at `output_path`
+- **Input:** `src: Path`, `dst: Path`, optional `template`, `emoji_json`, `verbose`
+- **Output:** `.pdf` file generated at `dst`
 
 ### `sync_engine.py`
 Detects the presence of annotations on each note on the tablet and decides which action to take. To do this, an MD5 hash comparison is performed between the source and the stored state.
