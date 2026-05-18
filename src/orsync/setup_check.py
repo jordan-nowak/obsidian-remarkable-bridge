@@ -1,27 +1,17 @@
-"""
-Installation verification for obsidian-remarkable-bridge.
-
-Checks that all required dependencies (Pandoc, SSH connection to reMarkable)
-are available before the sync pipeline is started.
-
-Conventions:
-- Each check is independent - a failed check does not abort the others.
-- The caller inspects CheckReport.all_ok to decide whether to proceed.
-- SSH checks use paramiko with a short configurable timeout.
-"""
-
 from __future__ import annotations
 
 import os
 import platform
 import shutil
 import subprocess
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import paramiko
 
 # ============================================================
-# DATA CLASS
+# DATA CLASSES
 # ============================================================
 
 
@@ -50,17 +40,7 @@ class CheckReport:
         return all(item.status for item in self.items)
 
     def __repr__(self) -> str:
-        """
-        Return a formatted report.
-
-        Returns
-        -------
-        str
-            String representation showing result of the report.
-        """
-        items_repr = ""
-        for item in self.items:
-            items_repr += "\n" + str(item)
+        items_repr = "".join(f"\n{item}" for item in self.items)
         overall = "All checks passed ✅" if self.all_ok else "Some checks failed ❌"
         return (
             f"\n__ Installation Check ______________________________________"
@@ -70,67 +50,102 @@ class CheckReport:
         )
 
 
+@dataclass(frozen=True)
+class _CheckContext:
+    """Resolved configuration used by all checks. Built once by _build_context."""
+
+    key_path: str
+    timeout: int
+    ip_usb: str
+    ip_wifi: str | None
+
+
+# ============================================================
+# SSH SESSION
+# ============================================================
+
+
+@contextmanager
+def _open_ssh_session(ip: str, key_path: str, timeout: int):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=ip,
+            username="root",
+            key_filename=key_path,
+            timeout=timeout,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        yield client
+    finally:
+        client.close()
+
+
 # ============================================================
 # INTERNAL HELPERS
 # ============================================================
 
 
-def _check_os() -> CheckItem:
+def _check_binary(name: str, args: list[str], not_found_detail: str) -> CheckItem:
     """
-    Detect and report the current operating system.
+    Checks whether a CLI binary is available in the PATH.
 
-    Returns
-    -------
-    CheckItem
-        Result of the verification - never raises.
+    Args:
+        name:             Name displayed in the CheckItem (e.g. "Pandoc").
+        args:             Check command (e.g. ["pandoc", "--version"]).
+        not_found_detail: Message displayed if the binary is not in the PATH.
+
+    Returns:
+        CheckItem - never raises.
     """
-    os_name = platform.system()
-    version = platform.version()
-    return CheckItem(
-        name="OS detected",
-        status=True,
-        detail=f"{os_name} ({version})",
-    )
-
-
-def _check_pandoc() -> CheckItem:
-    """
-    Verify that Pandoc is installed and reachable in PATH.
-
-    Returns
-    -------
-    CheckItem
-        Result of the verification - never raises.
-    """
-    if shutil.which("pandoc") is None:
-        return CheckItem(
-            name="Pandoc",
-            status=False,
-            detail="not found in PATH - install from https://pandoc.org/installing.html and add to PATH",
-        )
-
+    binary = args[0]
+    if shutil.which(binary) is None:
+        return CheckItem(name=name, status=False, detail=not_found_detail)
     try:
-        result = subprocess.run(
-            ["pandoc", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        result = subprocess.run(args, capture_output=True, text=True, timeout=5)
         if result.returncode != 0:
             return CheckItem(
-                name="Pandoc",
+                name=name,
                 status=False,
                 detail=f"found but returned non-zero exit code {result.returncode}",
             )
         version_line = result.stdout.splitlines()[0] if result.stdout else "unknown version"
-        return CheckItem(name="Pandoc", status=True, detail=version_line)
-
+        return CheckItem(name=name, status=True, detail=version_line)
     except subprocess.TimeoutExpired:
         return CheckItem(
-            name="Pandoc",
+            name=name,
             status=False,
-            detail="found but timed out on --version",
+            detail=f"found but timed out on {args[-1]}",
         )
+
+
+def _check_os() -> CheckItem:
+    """Detect and report the current operating system. Never raises."""
+    return CheckItem(
+        name="OS detected",
+        status=True,
+        detail=f"{platform.system()} ({platform.version()})",
+    )
+
+
+def check_pandoc() -> CheckItem:
+    """Check that Pandoc is installed and included in the PATH. Never raises."""
+    return _check_binary(
+        "Pandoc",
+        ["pandoc", "--version"],
+        "not found in PATH - install from https://pandoc.org/installing.html and add to PATH",
+    )
+
+
+def check_typst() -> CheckItem:
+    """Check that Typst is installed and accessible in the PATH. Never raises an exception."""
+    return _check_binary(
+        "Typst",
+        ["typst", "--version"],
+        "not found in PATH - install Typst (https://typst.app) and add to PATH",
+    )
 
 
 def _check_ssh(label: str, ip: str, key_path: str, timeout: int) -> CheckItem:
@@ -153,40 +168,22 @@ def _check_ssh(label: str, ip: str, key_path: str, timeout: int) -> CheckItem:
     CheckItem
         Result of the connection attempt - never raises.
     """
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
     try:
-        client.connect(
-            hostname=ip,
-            username="root",
-            key_filename=key_path,
-            timeout=timeout,
-            look_for_keys=False,
-            allow_agent=False,
-        )
-        return CheckItem(name=label, status=True, detail=f"connected to root@{ip}")
-
+        with _open_ssh_session(ip, key_path, timeout):
+            return CheckItem(name=label, status=True, detail=f"connected to root@{ip}")
     except FileNotFoundError:
-        return CheckItem(
-            name=label,
-            status=False,
-            detail=f"SSH key not found: {key_path}",
-        )
+        return CheckItem(name=label, status=False, detail=f"SSH key not found: {key_path}")
     except paramiko.AuthenticationException:
         return CheckItem(
             name=label,
             status=False,
-            detail=f"authentication failed for root@{ip} - check that the public key is deployed on the tablet",
+            detail=(
+                f"authentication failed for root@{ip}"
+                " - check that the public key is deployed on the tablet"
+            ),
         )
     except (paramiko.SSHException, OSError, TimeoutError) as exc:
-        return CheckItem(
-            name=label,
-            status=False,
-            detail=f"connection failed to {ip}: {exc}",
-        )
-    finally:
-        client.close()
+        return CheckItem(name=label, status=False, detail=f"connection failed to {ip}: {exc}")
 
 
 def _check_firmware(ip: str, key_path: str, timeout: int) -> CheckItem:
@@ -207,31 +204,150 @@ def _check_firmware(ip: str, key_path: str, timeout: int) -> CheckItem:
     CheckItem
         Firmware version string, or failure detail - never raises.
     """
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
     try:
-        client.connect(
-            hostname=ip,
-            username="root",
-            key_filename=key_path,
-            timeout=timeout,
-            look_for_keys=False,
-            allow_agent=False,
-        )
-        _, stdout, _ = client.exec_command("cat /etc/version")
-        version = stdout.read().decode().strip()
-        detail = version if version else "connected but version file empty"
-        return CheckItem(name="reMarkable firmware", status=True, detail=detail)
-
+        with _open_ssh_session(ip, key_path, timeout) as client:
+            _, stdout, _ = client.exec_command("cat /etc/version")
+            version = stdout.read().decode().strip()
+            detail = version if version else "connected but version file empty"
+            return CheckItem(name="reMarkable firmware", status=True, detail=detail)
     except (paramiko.SSHException, OSError, TimeoutError) as exc:
         return CheckItem(
             name="reMarkable firmware",
             status=False,
             detail=f"could not read firmware version: {exc}",
         )
-    finally:
-        client.close()
+
+
+# ============================================================
+# ORCHESTRATION
+# ============================================================
+
+
+def _build_context(config: dict) -> _CheckContext:
+    """
+    Extracts and validates the configuration. Can be tested independently of run_check.
+
+    Parameters
+    ----------
+    config : dict
+        Parsed content of config.yaml.
+
+    Returns
+    -------
+    _CheckContext
+        Resolved values ready for use by all checks.
+    """
+    return _CheckContext(
+        key_path=os.path.expanduser(config.get("ssh_key_path", "~/.ssh/id_rsa_remarkable")),
+        timeout=int(config.get("ssh_timeout", 5)),
+        ip_usb=config.get("remarkable_ip_usb", "10.11.99.1"),
+        ip_wifi=config.get("remarkable_ip_wifi") or None,
+    )
+
+
+def _build_checklist(ctx: _CheckContext) -> list[Callable[[], CheckItem]]:
+    """
+    Constructs the ordered list of checks to be executed.
+
+    The firmware -> SSH dependency is explicitly resolved here:
+    _check_firmware is only added if an SSH connection is available,
+    and receives the corresponding IP address as a bound parameter.
+
+    .. note::
+        SSH checks (USB and WiFi) are executed **eagerly** during this call,
+        not lazily during _execute(). Their results are cached in closures
+        and replayed when _execute() calls the returned callables.
+        This design avoids opening two SSH connections to the same host
+        and allows firmware_ip to be resolved before the checklist is returned.
+
+    Parameters
+    ----------
+    ctx: _CheckContext
+        Resolved configuration.
+
+    Returns
+    -------
+    list[Callable[[], CheckItem]]
+        Ordered list of zero-argument callables, ready for _execute.
+        Order: OS, Pandoc, SSH USB (cached), SSH WiFi (cached), Firmware, Typst.
+    """
+
+    def ssh_usb() -> CheckItem:
+        return _check_ssh("SSH USB connection", ctx.ip_usb, ctx.key_path, ctx.timeout)
+
+    def ssh_wifi() -> CheckItem:
+        if not ctx.ip_wifi:
+            return CheckItem(
+                name="SSH WiFi connection",
+                status=True,
+                detail="skipped - no WiFi IP configured",
+            )
+        return _check_ssh("SSH WiFi connection", ctx.ip_wifi, ctx.key_path, ctx.timeout)
+
+    # Explicit resolution of the firmware dependency -> SSH
+    # The checks are called once here to resolve firmware_ip;
+    # their results are cached and returned by the closures below.
+    _ssh_usb_result = ssh_usb()
+    _ssh_wifi_result = ssh_wifi()
+
+    if _ssh_usb_result.status:
+        firmware_ip = ctx.ip_usb
+    elif _ssh_wifi_result.status:
+        firmware_ip = ctx.ip_wifi
+    else:
+        firmware_ip = None
+
+    def ssh_usb_cached() -> CheckItem:
+        return _ssh_usb_result
+
+    def ssh_wifi_cached() -> CheckItem:
+        return _ssh_wifi_result
+
+    def firmware_check() -> CheckItem:
+        if firmware_ip is None:
+            return CheckItem(
+                name="reMarkable firmware",
+                status=False,
+                detail="skipped - no SSH connection available",
+            )
+        return _check_firmware(firmware_ip, ctx.key_path, ctx.timeout)
+
+    return [
+        _check_os,  # Step 1 - OS
+        check_pandoc,  # Step 2 - Pandoc
+        ssh_usb_cached,  # Step 3 - SSH USB
+        ssh_wifi_cached,  # Step 4 - SSH WiFi
+        firmware_check,  # Step 5 - Firmware
+        check_typst,  # Step 6 - Typst
+    ]
+
+
+def _execute(checks: list[Callable[[], CheckItem]]) -> CheckReport:
+    """
+    Executes a list of checks sequentially and aggregates the results.
+
+    Each check is independent - any unexpected exception is caught
+    and converted into a failed CheckItem so as not to interrupt subsequent checks.
+
+    Parameters
+    ----------
+    checks: list[Callable[[], CheckItem]]
+        Ordered list of zero-argument callables.
+
+    Returns
+    -------
+    CheckReport
+        Aggregated results.
+    """
+    report = CheckReport()
+    for check in checks:
+        try:
+            report.items.append(check())
+        except Exception as exc:
+            report.items.append(
+                CheckItem(name=check.__name__, status=False, detail=f"unexpected error: {exc}")
+            )
+    return report
 
 
 # ============================================================
@@ -261,45 +377,6 @@ def run_check(config: dict) -> CheckReport:
         Contains one CheckItem per verification. Inspect .all_ok to decide
         whether the pipeline can proceed.
     """
-    report = CheckReport()
-    key_path: str = os.path.expanduser(config.get("ssh_key_path", "~/.ssh/id_rsa_remarkable"))
-    timeout: int = int(config.get("ssh_timeout", 5))
-    ip_usb: str = config.get("remarkable_ip_usb", "10.11.99.1")
-    ip_wifi: str | None = config.get("remarkable_ip_wifi") or None
-
-    # Step 1 - OS
-    report.items.append(_check_os())
-
-    # Step 2 - Pandoc
-    report.items.append(_check_pandoc())
-
-    # Step 3 - SSH USB
-    ssh_usb = _check_ssh("SSH USB connection", ip_usb, key_path, timeout)
-    report.items.append(ssh_usb)
-
-    # Step 4 - SSH WiFi (skipped if no IP configured)
-    if ip_wifi:
-        ssh_wifi = _check_ssh("SSH WiFi connection", ip_wifi, key_path, timeout)
-        report.items.append(ssh_wifi)
-    else:
-        report.items.append(
-            CheckItem(
-                name="SSH WiFi connection", status=True, detail="skipped - no WiFi IP configured"
-            )
-        )
-
-    # Step 5 - Firmware (from whichever SSH succeeded first)
-    if ssh_usb.status:
-        report.items.append(_check_firmware(ip_usb, key_path, timeout))
-    elif ip_wifi and ssh_wifi and ssh_wifi.status:
-        report.items.append(_check_firmware(ip_wifi, key_path, timeout))
-    else:
-        report.items.append(
-            CheckItem(
-                name="reMarkable firmware",
-                status=False,
-                detail="skipped - no SSH connection available",
-            )
-        )
-
-    return report
+    ctx = _build_context(config)
+    checks = _build_checklist(ctx)
+    return _execute(checks)
